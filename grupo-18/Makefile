@@ -1,23 +1,23 @@
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -Iinclude
+LDFLAGS =
 
-all: server client
+all: folders orchestrator client
 
-server: server.o defs.o
-	$(CC) $(CFLAGS) -o server server.o defs.o
+orchestrator: bin/orchestrator
 
-client: client.o defs.o
-	$(CC) $(CFLAGS) -o client client.o defs.o
+client: bin/client
 
-server.o: server.c defs.h
-	$(CC) $(CFLAGS) -c server.c
+folders:
+		@mkdir -p src include obj bin tmp
 
-client.o: client.c defs.h
-	$(CC) $(CFLAGS) -c client.c
+bin/orchestrator: obj/orchestrator.o
+		$(CC) $(LDFLAGS) $^ -o $@
 
-defs.o: defs.h
-	$(CC) $(CFLAGS) -c defs.c
+bin/client: obj/client.o
+		$(CC) $(LDFLAGS) $^ -o $@
 
+obj/%.o: src/%.c
+		$(CC) $(CFLAGS) -c $< -o $@
 clean:
-	rm -f -r *.dSYM fifo* server client *.o
-
+		rm -f obj/* tmp/* bin/*
