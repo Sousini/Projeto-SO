@@ -3,7 +3,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include "defs.h"
+#include <string.h>
+#include "/home/joao/SO/grupo-18/include/defs.h"
 
 int main(int argc, char *argv[])
 {
@@ -17,6 +18,8 @@ int main(int argc, char *argv[])
     Msg msg;
     msg.time_estimated = time_estimated;
     strncpy(msg.program_and_args, program_and_args, sizeof(msg.program_and_args));
+    msg.program_and_args[sizeof(msg.program_and_args) - 1] = '\0';
+
 
     // criar o FIFO do client
     if (mkfifo("FIFO", 0666) == -1)
@@ -25,14 +28,18 @@ int main(int argc, char *argv[])
     }
 
     // Abrir o FIFO para escrita
-    int fd = open("FIFO", O_RDONLY);
+    int fd = open("FIFO", O_WRONLY);
     if (fd == -1)
     {
         perror("open error");
     }
 
     // Enviar a mensagem ao servidor
-    write(fd, &msg, sizeof(Msg));
+    if (write(fd, &msg, sizeof(Msg)) == -1) {
+        perror("write error");
+        close(fd);
+        return 1;
+    }
     close(fd);
 
     // Abrir o FIFO para leitura
@@ -43,7 +50,11 @@ int main(int argc, char *argv[])
     }
 
     // Ler a msg de resposta
-    read(fd, &msg, sizeof(Msg));
+    if (read(fd, &msg, sizeof(Msg)) == -1) {
+        perror("read error");
+        close(fd);
+        return 1;
+    }
     close(fd);
 
     return 0;
