@@ -3,7 +3,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include "defs.h"
 
-int count_needle(const char *haystack, const char *needle);
+
 

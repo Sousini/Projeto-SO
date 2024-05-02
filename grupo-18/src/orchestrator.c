@@ -1,118 +1,61 @@
-#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <string.h>
+#include <unistd.h>
 #include <stdlib.h>
-#include <sys/wait.h>
-#include "/home/joao/SO/grupo-18/include/defs.h"
-
-
-int count_needle(const char *haystack, const char *needle)
-{
-    int count = 0;
-    size_t needle_len = strlen(needle);
-    const char *tmp = haystack;
-
-    while ((tmp = strstr(tmp, needle)))
-    {
-        count++;
-        tmp += needle_len;
-    }
-
-    return count;
-}
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include "defs.h"
 
 int main(int argc, char *argv[])
 {
-
-    int fildes = open("FIFO", O_RDWR);
-    if (fildes == -1)
+    if (argc != 4)
     {
-        perror("open error");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
+    char *output_folder = argv[1];
+    int parallel_tasks = atoi(argv[2]);
+    char *sched_policy = argv[3];
+
+    PROCESS_REQUESTS *pr = init_process_requests(REQUESTS);
+
+    unlink(ORCHESTRATOR);
+    make_fifo(ORCHESTRATOR);
+
+    int fd_read, fd_write;
+    open_fifo(&fd_read, ORCHESTRATOR, O_RDWR);
+    open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
+
+    int tasks_running = 0;
     while (1)
     {
-        Msg new;
-        ssize_t read_bytes;
-
-        // Leitura do FIFO
-        read_bytes = read(fildes, &new, sizeof(Msg));
-        if (read_bytes <= 0)
+        if (tasks_running < parallel_tasks)
         {
-            // Verifica se a leitura foi bem-sucedida
-            if (read_bytes == 0)
+            Msg msg;
+            ssize_t read_bytes;
+            read_bytes = read(fd_read, &msg, sizeof(Msg));
+            if (read_bytes > 0)
             {
-                // FIFO foi fechado pelo outro lado
-                printf("FIFO closed\n");
+                msg.id = pr->count + 1;
+                add_request(pr, msg);
+                execute_task(&msg, output_folder);
+                remove_request(pr, 0);
+                tasks_running++;
             }
-            else
-            {
-                // Erro na leitura
-                perror("read error");
-            }
-            break;
         }
-
-        // Processamento da mensagem
-        int occurrences = count_needle(new.program_and_args, "needle");
-        new.occurrences = occurrences;
-
-        pid_t pid = fork();
-        if (pid == -1)
+        else
         {
-            // Verifica se o fork foi bem-sucedido
-            perror("fork error");
-            break;
-        }
-        else if (pid == 0)
-        {
-            // Processo filho
-
-            // Criação do arquivo de saída
-            char output[1024];
-            int fd_output = open(output, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            if (fd_output == -1)
-            {
-                // Verifica se a abertura do arquivo foi bem-sucedida
-                perror("open output error");
-                exit(1);
-            }
-
-            // Redirecionamento da saída padrão e de erro
-            dup2(fd_output, STDOUT_FILENO);
-            dup2(fd_output, STDERR_FILENO);
-            close(fd_output);
-
-            // Execução do comando shell
-            execlp("sh", "sh", "-c", new.program_and_args, NULL);
-            perror("execlp error");
-            _exit(EXIT_FAILURE);
-        }
-        else if (pid > 0)
-        {
-            // Processo pai
-            int status;
-            waitpid(pid, &status, 0);
-
-            // Verifica se o processo filho terminou com sucesso
-            if (WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS)
-            {
-                printf("Processo filho %d terminou com sucesso\n", pid);
-            }
-            else
-            {
-                printf("Processo filho %d terminou com erro\n", pid);
-            }
+            char response[] = "Server busy. Please try again later.\n";
+            write(fd_write, response, strlen(response));
         }
     }
 
-    // Fecho do FIFO
-    close(fildes);
-    unlink("FIFO");
+    close(fd_read);
+    close(fd_write);
+    unlink(ORCHESTRATOR);
 
+    free_process_requests(pr);
     return 0;
 }

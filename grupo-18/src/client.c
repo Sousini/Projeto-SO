@@ -1,61 +1,64 @@
-#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include "/home/joao/SO/grupo-18/include/defs.h"
+#include "defs.h"
 
 int main(int argc, char *argv[])
 {
-    // Extrair o tempo estimado
-    int time_estimated = atoi(argv[1]);
 
-    // Extrair o nome do programa e seus argumentos
-    char *program_and_args = argv[4];
+    if (argc < 4)
+    {
+        fprintf(stderr, "Usage: %s execute time -u/-p \"program [args]\"\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
 
-    // Criar a mensagem para enviar ao servidor
+    char *execution_type = argv[1];
+    int time = atoi(argv[2]);
+
+    if (strcmp(execution_type, "execute") != 0) {
+        fprintf(stderr, "Invalid command\n");
+        exit(EXIT_FAILURE);
+    }
+
     Msg msg;
-    msg.time_estimated = time_estimated;
-    strncpy(msg.program_and_args, program_and_args, sizeof(msg.program_and_args));
-    msg.program_and_args[sizeof(msg.program_and_args) - 1] = '\0';
+    msg.occurrences = 0;
+    msg.time_estimated = time;
 
+    if (strcmp(argv[3], "-u") == 0) {
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s execute time -u \"program [args]\"\n", argv[0]);
+            exit(EXIT_FAILURE);
+        }
+        strncpy(msg.program_and_args, argv[4], sizeof(msg.program_and_args));
+    } else if (strcmp(argv[3], "-p") == 0) {
+        if (argc < 5) {
+            fprintf(stderr, "Usage: %s execute time -p \"program [args] | program [args] | ...\"\n", argv[0]);
+            exit(EXIT_FAILURE);
+        }
+        strncpy(msg.program_and_args, argv[4], sizeof(msg.program_and_args));
+    } else {
+        fprintf(stderr, "Invalid option\n");
+        exit(EXIT_FAILURE);
+    }
 
-    // criar o FIFO do client
-    if (mkfifo("FIFO", 0666) == -1)
+    make_fifo(ORCHESTRATOR);
+    int fd_write;
+    open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
+
+    ssize_t written_bytes = write(fd_write, &msg, sizeof(Msg));
+
+    if (written_bytes != sizeof(Msg))
     {
-        perror("create error");
+        perror("Write Error");
+        close(fd_write);
+        exit(EXIT_FAILURE);
     }
 
-    // Abrir o FIFO para escrita
-    int fd = open("FIFO", O_WRONLY);
-    if (fd == -1)
-    {
-        perror("open error");
-    }
-
-    // Enviar a mensagem ao servidor
-    if (write(fd, &msg, sizeof(Msg)) == -1) {
-        perror("write error");
-        close(fd);
-        return 1;
-    }
-    close(fd);
-
-    // Abrir o FIFO para leitura
-    fd = open("FIFO", O_RDONLY);
-    if (fd == -1)
-    {
-        perror("open error");
-    }
-
-    // Ler a msg de resposta
-    if (read(fd, &msg, sizeof(Msg)) == -1) {
-        perror("read error");
-        close(fd);
-        return 1;
-    }
-    close(fd);
+    close(fd_write);
 
     return 0;
 }
