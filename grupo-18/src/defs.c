@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 #include "defs.h"
 
 
@@ -92,8 +93,16 @@ void handle_request(PROCESS_REQUESTS *pr, Msg *msg) {
     printf("Added to PROCESS_REQUESTS\n");
 }
 
+#include <sys/time.h>
+
 void execute_task(Msg *msg, const char *output_folder) {
-    // Crie um nome de arquivo único com base no ID da tarefa
+    struct timeval start_time, end_time;
+    double execution_time;
+
+    // Obter o tempo de início
+    gettimeofday(&start_time, NULL);
+
+    // Criar um nome de arquivo único com base no ID da tarefa
     char filename[20];
     sprintf(filename, "%d.txt", msg->id);
 
@@ -113,5 +122,106 @@ void execute_task(Msg *msg, const char *output_folder) {
     printf("Executing: %s\n", msg->program_and_args);
     system(msg->program_and_args);
 
-    printf("Task %d completed\n", msg->id);
+    // Obter o tempo de término
+    gettimeofday(&end_time, NULL);
+
+    // Calcular o tempo de execução em milissegundos
+    execution_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0; // segundos para milissegundos
+    execution_time += (end_time.tv_usec - start_time.tv_usec) / 1000.0; // microssegundos para milissegundos
+
+    // Atualizar o tempo real de execução na estrutura da tarefa
+    msg->execution_time = execution_time;
+
+    printf("Task %d completed in %.2f ms\n", msg->id, execution_time);
+}
+
+
+void schedule_tasks(PROCESS_REQUESTS *pr, const char *output_folder, int parallel_tasks) {
+    int tasks_to_execute = pr->count < parallel_tasks? pr->count : parallel_tasks;
+
+    for (int i = 0; i < tasks_to_execute; i++) {
+        Msg *task = get_request(pr, i);
+        if (task!= NULL && task->occurrences == 0) {
+            // Execute a tarefa em um processo separado
+            pid_t pid = fork();
+            if (pid == -1) {
+                perror("fork");
+                exit(EXIT_FAILURE);
+            }
+
+            if (pid == 0) {
+                // Execute a tarefa no processo filho
+                execute_task(task, output_folder);
+                exit(EXIT_SUCCESS);
+            } else {
+                // Aguarde a conclusão do processo filho
+                wait(NULL);
+                task->occurrences++;
+            }
+        }
+    }
+}
+void request_status(const char *orchestrator_fifo) {
+    int fd_write;
+    open_fifo(&fd_write, orchestrator_fifo, O_WRONLY);
+
+    // Construindo a mensagem para solicitar o status
+    Msg msg;
+    strcpy(msg.program_and_args, "status");
+
+    // Enviando a mensagem para o servidor
+    ssize_t written_bytes = write(fd_write, &msg, sizeof(Msg));
+    if (written_bytes != sizeof(Msg)) {
+        perror("Write Error");
+        close(fd_write);
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd_write);
+}
+
+void process_status_request(PROCESS_REQUESTS *pr, const char *output_folder) {
+    // Variáveis para contar tarefas em execução, agendadas e concluídas
+    int executing_count = 0;
+    int scheduled_count = 0;
+    int completed_count = 0;
+
+    // Iterar sobre todas as tarefas na lista de solicitações de processo
+    for (int i = 0; i < pr->count; i++) {
+        Msg *task = get_request(pr, i);
+
+        // Verificar o status da tarefa
+        if (task->occurrences > 0) {
+            completed_count++;
+        } else if (task->occurrences == 0 && task->execution_time == 0) {
+            executing_count++;
+        } else {
+            scheduled_count++;
+        }
+    }
+
+    // Enviar a resposta para o cliente
+    printf("Executing\n");
+    for (int i = 0; i < pr->count; i++) {
+        Msg *task = get_request(pr, i);
+        if (task->occurrences == 0 && task->execution_time == 0) {
+            printf("%d %s\n", task->id, task->program_and_args);
+        }
+    }
+
+    printf("Scheduled\n");
+    for (int i = 0; i < pr->count; i++) {
+        Msg *task = get_request(pr, i);
+        if (task->occurrences == 0 && task->execution_time > 0) {
+            printf("%d %s\n", task->id, task->program_and_args);
+        }
+    }
+
+    printf("Completed\n");
+    for (int i = 0; i < pr->count; i++) {
+        Msg *task = get_request(pr, i);
+        if (task->occurrences > 0) {
+            printf("%d %s %d ms\n", task->id, task->program_and_args, task->execution_time);
+        }
+    }
 }

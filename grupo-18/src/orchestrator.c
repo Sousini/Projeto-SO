@@ -12,6 +12,7 @@ int main(int argc, char *argv[])
 {
     if (argc != 4)
     {
+        fprintf(stderr, "Usage: %s output_folder parallel-tasks sched-policy\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -28,29 +29,24 @@ int main(int argc, char *argv[])
     open_fifo(&fd_read, ORCHESTRATOR, O_RDWR);
     open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
 
-    int tasks_running = 0;
-    while (1)
-    {
-        if (tasks_running < parallel_tasks)
-        {
-            Msg msg;
-            ssize_t read_bytes;
-            read_bytes = read(fd_read, &msg, sizeof(Msg));
-            if (read_bytes > 0)
-            {
-                msg.id = pr->count + 1;
-                add_request(pr, msg);
-                execute_task(&msg, output_folder);
-                remove_request(pr, 0);
-                tasks_running++;
-            }
-        }
-        else
-        {
-            char response[] = "Server busy. Please try again later.\n";
-            write(fd_write, response, strlen(response));
+    while (1) {
+    schedule_tasks(pr, output_folder, parallel_tasks);
+
+    Msg msg;
+    ssize_t read_bytes;
+    read_bytes = read(fd_read, &msg, sizeof(Msg));
+
+    if (read_bytes > 0) {
+        if (strcmp(msg.program_and_args, "status") == 0) {
+            process_status_request(pr, output_folder);
+        } else {
+            msg.id = pr->count + 1;
+            add_request(pr, msg);
+            execute_task(&msg, output_folder);
+            remove_request(pr, 0);
         }
     }
+}
 
     close(fd_read);
     close(fd_write);

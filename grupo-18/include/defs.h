@@ -1,7 +1,7 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define ORCHESTRATOR "fifo_orchestrator"
+#define ORCHESTRATOR "tmp/fifo_orchestrator"
 #define CLIENT "fifo_client"
 #define REQUESTS 100
 typedef enum { false, true } bool;
@@ -30,5 +30,7 @@ bool add_request(PROCESS_REQUESTS *pr, Msg msg);
 Msg* get_request(PROCESS_REQUESTS *pr, int index);
 void remove_request(PROCESS_REQUESTS *pr, int index);
 void handle_request(PROCESS_REQUESTS *pr, Msg *msg);
+void execute_task(Msg *msg, const char *output_folder);
+
 
 #endif
