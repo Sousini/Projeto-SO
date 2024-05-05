@@ -29,7 +29,8 @@ int main(int argc, char *argv[]) {
         Msg msg;
         msg.occurrences = 0;
         msg.time_estimated = time;
-
+        msg.status = NEW;
+        
         if (strcmp(execution_type, "execute") != 0) {
             fprintf(stderr, "Invalid command\n");
             exit(EXIT_FAILURE);
@@ -64,6 +65,7 @@ int main(int argc, char *argv[]) {
             close(fd_write);
             exit(EXIT_FAILURE);
         }
+        
         char task_sent_msg[50];
         sprintf(task_sent_msg, "Task %d sent\n", msg.id);
         write(STDOUT_FILENO, task_sent_msg, strlen(task_sent_msg));

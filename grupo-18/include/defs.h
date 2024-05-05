@@ -4,7 +4,18 @@
 #define ORCHESTRATOR "tmp/fifo_orchestrator"
 #define CLIENT "fifo_client"
 #define REQUESTS 100
-typedef enum { false, true } bool;
+
+typedef enum {
+    false,
+    true
+} bool;
+
+typedef enum{
+    NEW,
+    RUNNING,
+    DONE
+} TaskStatus;
+
 
 
 typedef struct msg{
@@ -14,6 +25,7 @@ typedef struct msg{
     int execution_time;
     int occurrences;
     char program_and_args[300];
+    TaskStatus status;
 } Msg;
 
 typedef struct process_requests {

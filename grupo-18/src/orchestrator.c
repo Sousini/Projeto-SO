@@ -29,24 +29,32 @@ int main(int argc, char *argv[])
     open_fifo(&fd_read, ORCHESTRATOR, O_RDWR);
     open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
 
-    while (1) {
-    schedule_tasks(pr, output_folder, parallel_tasks);
+    while (1)
+    {
 
-    Msg msg;
-    ssize_t read_bytes;
-    read_bytes = read(fd_read, &msg, sizeof(Msg));
+        Msg msg;
+        ssize_t read_bytes;
+        read_bytes = read(fd_read, &msg, sizeof(Msg));
 
-    if (read_bytes > 0) {
-        if (strcmp(msg.program_and_args, "status") == 0) {
-            process_status_request(pr, output_folder);
-        } else {
-            msg.id = pr->count + 1;
-            add_request(pr, msg);
-            execute_task(&msg, output_folder);
-            remove_request(pr, 0);
+        if (read_bytes > 0)
+        {
+            if (strcmp(msg.program_and_args, "status") == 0)
+            {
+                process_status_request(pr, output_folder);
+            }
+            else
+            {
+                msg.id = pr->count + 1;
+                add_request(pr, msg);
+                int pid = fork();
+                if (pid == 0)
+                {
+                    execute_task(&msg, output_folder);
+                    _exit(0);
+                }
+            }
         }
     }
-}
 
     close(fd_read);
     close(fd_write);
