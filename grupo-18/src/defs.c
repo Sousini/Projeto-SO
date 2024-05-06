@@ -108,8 +108,7 @@ void handle_request(PROCESS_REQUESTS *pr, Msg *msg)
     printf("Added to PROCESS_REQUESTS\n");
 }
 
-void execute_task(Msg *msg, const char *output_folder)
-{
+void execute_task(Msg *msg, const char *output_folder) {
     struct timeval start_time, end_time;
     double execution_time;
 
@@ -124,23 +123,27 @@ void execute_task(Msg *msg, const char *output_folder)
     snprintf(filepath, sizeof(filepath), "%s/%s", output_folder, filename);
 
     int fd_output = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd_output == -1)
-    {
+    if (fd_output == -1) {
         perror("open");
         exit(EXIT_FAILURE);
     }
 
-    dup2(fd_output, STDOUT_FILENO);
-    dup2(fd_output, STDERR_FILENO);
-    close(fd_output);
     int pid_fork = fork();
-    if (pid_fork == 0)
-    {
+    if (pid_fork == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    } else if (pid_fork == 0) {
+        // Processo filho
+        dup2(fd_output, STDOUT_FILENO);
+        dup2(fd_output, STDERR_FILENO);
+        close(fd_output);
         exec_command(msg->program_and_args);
+        _exit(EXIT_SUCCESS);
+    } else {
+        // Processo pai
+        waitpid(pid_fork, NULL, 0);
+        close(fd_output); // Fechar após o término do processo filho
     }
-    wait(NULL);
-
-    printf("Executing: %s\n", msg->program_and_args);
 
     // Obter o tempo de término
     gettimeofday(&end_time, NULL);
@@ -151,6 +154,24 @@ void execute_task(Msg *msg, const char *output_folder)
 
     // Atualizar o tempo real de execução na estrutura da tarefa
     msg->execution_time = execution_time;
+    msg->status = WAIT; // Definir status como WAIT após a execução
+
+    // Abra o FIFO e escreva a mensagem
+    int fd_fifo = open(ORCHESTRATOR, O_WRONLY);
+    if (fd_fifo == -1) {
+        perror("open");
+        exit(EXIT_FAILURE);
+    }
+
+    // Escrever a mensagem para o FIFO
+    if (write(fd_fifo, msg, sizeof(Msg)) == -1) {
+        perror("write");
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd_fifo);
+
+    printf("Task %d executed. Execution time: %.2f ms\n", msg->id, execution_time);
 }
 
 void schedule_tasks(PROCESS_REQUESTS *pr, const char *output_folder, int parallel_tasks)
@@ -209,64 +230,52 @@ void request_status(const char *orchestrator_fifo)
 
 void process_status_request(PROCESS_REQUESTS *pr, const char *output_folder)
 {
-    // Variáveis para contar tarefas em execução, agendadas e concluídas
-    int executing_count = 0;
-    int scheduled_count = 0;
-    int completed_count = 0;
+    printf("Status of tasks:\n");
 
-    // Iterar sobre todas as tarefas na lista de solicitações de processo
+    printf("\nTasks in execution:\n");
     for (int i = 0; i < pr->count; i++)
     {
-        Msg *task = get_request(pr, i);
-
-        // Verificar o status da tarefa
-        if (task->occurrences > 0)
-        {
-            completed_count++;
-            task->status = DONE;
-        }
-        else if (task->occurrences == 0 && task->execution_time == 0)
-        {
-            executing_count++;
-            task->status = NEW;
-        }
-        else
-        {
-            scheduled_count++;
-            task->status = RUNNING;
-        }
-    }
-    // Enviar a resposta para o cliente
-    printf("Executing\n");
-    for (int i = 0; i < pr->count; i++)
-    {
-        Msg *task = get_request(pr, i);
-        if (task->status == NEW)
-        {
-            printf("%d %s\n", task->id, task->program_and_args);
-        }
-    }
-
-    printf("Scheduled\n");
-    for (int i = 0; i < pr->count; i++)
-    {
-        Msg *task = get_request(pr, i);
+        Msg *task = &pr->requests[i];
         if (task->status == RUNNING)
         {
-            printf("%d %s\n", task->id, task->program_and_args);
+            printf("Task %d: RUNNING\n", task->id);
         }
     }
 
-    printf("Completed\n");
+    printf("\nScheduled tasks:\n");
     for (int i = 0; i < pr->count; i++)
     {
-        Msg *task = get_request(pr, i);
+        Msg *task = &pr->requests[i];
+        if (task->status == NEW)
+        {
+            printf("Task %d: NEW\n", task->id);
+        }
+    }
+
+    printf("\nCompleted tasks:\n");
+    for (int i = 0; i < pr->count; i++)
+    {
+        Msg *task = &pr->requests[i];
         if (task->status == DONE)
         {
-            printf("%d %s %d ms\n", task->id, task->program_and_args, task->execution_time);
+            printf("Task %d: DONE in %d ms\n", task->id, task->execution_time);
         }
     }
 }
+
+
+
+void change_process_status(PROCESS_REQUESTS *pr, int id, TaskStatus new_status) {
+    for (int i = 0; i < pr->count; i++) {
+        if (pr->requests[i].id == id) {
+            pr->requests[i].status = new_status;
+            return; // Uma vez que encontramos o processo com o ID especificado, podemos sair da função
+        }
+    }
+    // Se chegarmos aqui, significa que o ID especificado não foi encontrado
+    fprintf(stderr, "Process with ID %d not found\n", id);
+}
+
 
 int exec_command(char *arg)
 {

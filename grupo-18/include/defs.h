@@ -13,7 +13,9 @@ typedef enum {
 typedef enum{
     NEW,
     RUNNING,
-    DONE
+    SCHEDULED,
+    DONE,
+    WAIT
 } TaskStatus;
 
 
@@ -43,6 +45,8 @@ Msg* get_request(PROCESS_REQUESTS *pr, int index);
 void remove_request(PROCESS_REQUESTS *pr, int index);
 void handle_request(PROCESS_REQUESTS *pr, Msg *msg);
 void execute_task(Msg *msg, const char *output_folder);
+int exec_command(char *arg);
+void change_process_status(PROCESS_REQUESTS *pr, int id, TaskStatus new_status);
 
 
 #endif

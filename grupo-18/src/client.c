@@ -56,6 +56,7 @@ int main(int argc, char *argv[]) {
         // Enviar pedido de execução para o servidor
         int fd_write;
         open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
+        
 
         ssize_t written_bytes = write(fd_write, &msg, sizeof(Msg));
 
