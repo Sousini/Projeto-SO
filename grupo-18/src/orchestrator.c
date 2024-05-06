@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -12,28 +13,26 @@
 
 int main(int argc, char *argv[])
 {
-    if (argc != 4)
+    if (argc != 3)
     {
-        fprintf(stderr, "Usage: %s output_folder parallel-tasks sched-policy\n", argv[0]);
+        write(STDERR_FILENO, "Usage: <output_folder> <parallel-tasks>\n", strlen("Usage: <output_folder> <parallel-tasks>\n"));
         exit(EXIT_FAILURE);
     }
 
     char *output_folder = argv[1];
     int parallel_tasks = atoi(argv[2]);
-    char *sched_policy = argv[3];
 
     PROCESS_REQUESTS *pr = init_process_requests(parallel_tasks);
 
     unlink(ORCHESTRATOR);
     make_fifo(ORCHESTRATOR);
-
+    
     int fd_read, fd_write;
     open_fifo(&fd_read, ORCHESTRATOR, O_RDWR);
     open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
-
+    write(STDOUT_FILENO, "Infelizmente, o programa funciona apenas no modelo First Come, First Served (FCFS).\n", strlen("Infelizmente, o programa funciona apenas no modelo First Come, First Served (FCFS).\n"));
     while (1)
     {
-
         Msg msg;
         ssize_t read_bytes;
         read_bytes = read(fd_read, &msg, sizeof(Msg));
@@ -42,7 +41,15 @@ int main(int argc, char *argv[])
         {
             if (strcmp(msg.program_and_args, "status") == 0)
             {
-                process_status_request(pr, output_folder);
+                char buffer[1024];
+                snprintf(buffer, 1024, "tmp/FIFO_%d", msg.pid);
+                int fd_ret = open(buffer, O_WRONLY);
+                if (fd_ret == -1) {
+                    perror("Open Error");
+                    exit(EXIT_FAILURE);
+                }
+                process_status_request(pr, output_folder, fd_ret);
+                close(fd_ret);
             }
             else if (msg.status == NEW)
             {
@@ -58,7 +65,7 @@ int main(int argc, char *argv[])
             }
             else if (msg.status == WAIT) {
                 wait(NULL);
-                change_process_status(pr,msg.id,DONE);
+                change_process_status(pr, msg.id, DONE, msg.execution_time);
 
                  // Abrir ou criar o arquivo de log para registro
                 int log_fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0666);

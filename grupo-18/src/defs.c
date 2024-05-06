@@ -29,7 +29,7 @@ void send_client_response(int pid, int id)
 {
     char response[100];
     sprintf(response, "Response to client with ID %d: Program ID is %d\n", pid, id);
-    // Assuming write to stdout
+    // Escrevendo para STDOUT_FILENO
     write(STDOUT_FILENO, response, strlen(response));
 }
 
@@ -53,7 +53,8 @@ bool add_request(PROCESS_REQUESTS *pr, Msg msg)
 {
     if (pr->count >= REQUESTS)
     {
-        fprintf(stderr, "Error: Maximum requests exceeded\n");
+        char errorMsg[] = "Error: Maximum requests exceeded\n";
+        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
         return false;
     }
 
@@ -65,7 +66,8 @@ Msg *get_request(PROCESS_REQUESTS *pr, int index)
 {
     if (index < 0 || index >= pr->count)
     {
-        fprintf(stderr, "Error: Invalid request index\n");
+        char errorMsg[] = "Error: Invalid request index\n";
+        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
         return NULL;
     }
 
@@ -76,7 +78,8 @@ void remove_request(PROCESS_REQUESTS *pr, int index)
 {
     if (index < 0 || index >= pr->count)
     {
-        fprintf(stderr, "Error: Invalid request index\n");
+        char errorMsg[] = "Error: Invalid request index\n";
+        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
         return;
     }
 
@@ -92,23 +95,29 @@ void handle_request(PROCESS_REQUESTS *pr, Msg *msg)
     // Verificar se o ponteiro pr é válido
     if (!pr)
     {
-        fprintf(stderr, "Error: PROCESS_REQUESTS is not initialized\n");
+        char errorMsg[] = "Error: PROCESS_REQUESTS is not initialized\n";
+        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
         return;
     }
 
     // Adicionar a solicitação à estrutura de solicitações
     if (!add_request(pr, *msg))
     {
-        fprintf(stderr, "Error: Failed to add request to the PROCESS_REQUESTS\n");
+        char errorMsg[] = "Error: Failed to add request to the PROCESS_REQUESTS\n";
+        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
         return;
     }
 
     // Implemente aqui a lógica para processar a solicitação
-    printf("Received request with ID %d\n", msg->id);
-    printf("Added to PROCESS_REQUESTS\n");
+    char receivedMsg[100];
+    sprintf(receivedMsg, "Received request with ID %d\n", msg->id);
+    write(STDOUT_FILENO, receivedMsg, strlen(receivedMsg));
+    char addedMsg[] = "Added to PROCESS_REQUESTS\n";
+    write(STDOUT_FILENO, addedMsg, strlen(addedMsg));
 }
 
-void execute_task(Msg *msg, const char *output_folder) {
+void execute_task(Msg *msg, const char *output_folder)
+{
     struct timeval start_time, end_time;
     double execution_time;
 
@@ -123,23 +132,29 @@ void execute_task(Msg *msg, const char *output_folder) {
     snprintf(filepath, sizeof(filepath), "%s/%s", output_folder, filename);
 
     int fd_output = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (fd_output == -1) {
+    if (fd_output == -1)
+    {
         perror("open");
         exit(EXIT_FAILURE);
     }
 
     int pid_fork = fork();
-    if (pid_fork == -1) {
+    if (pid_fork == -1)
+    {
         perror("fork");
         exit(EXIT_FAILURE);
-    } else if (pid_fork == 0) {
+    }
+    else if (pid_fork == 0)
+    {
         // Processo filho
         dup2(fd_output, STDOUT_FILENO);
         dup2(fd_output, STDERR_FILENO);
         close(fd_output);
         exec_command(msg->program_and_args);
         _exit(EXIT_SUCCESS);
-    } else {
+    }
+    else
+    {
         // Processo pai
         waitpid(pid_fork, NULL, 0);
         close(fd_output); // Fechar após o término do processo filho
@@ -158,20 +173,24 @@ void execute_task(Msg *msg, const char *output_folder) {
 
     // Abra o FIFO e escreva a mensagem
     int fd_fifo = open(ORCHESTRATOR, O_WRONLY);
-    if (fd_fifo == -1) {
+    if (fd_fifo == -1)
+    {
         perror("open");
         exit(EXIT_FAILURE);
     }
 
     // Escrever a mensagem para o FIFO
-    if (write(fd_fifo, msg, sizeof(Msg)) == -1) {
+    if (write(fd_fifo, msg, sizeof(Msg)) == -1)
+    {
         perror("write");
         exit(EXIT_FAILURE);
     }
 
     close(fd_fifo);
 
-    printf("Task %d executed. Execution time: %.2f ms\n", msg->id, execution_time);
+    char taskExecutedMsg[100];
+    sprintf(taskExecutedMsg, "Task %d executed. Execution time: %.2f ms\n", msg->id, msg->execution_time);
+    write(STDOUT_FILENO, taskExecutedMsg, strlen(taskExecutedMsg));
 }
 
 void schedule_tasks(PROCESS_REQUESTS *pr, const char *output_folder, int parallel_tasks)
@@ -207,75 +226,126 @@ void schedule_tasks(PROCESS_REQUESTS *pr, const char *output_folder, int paralle
     }
 }
 
-void request_status(const char *orchestrator_fifo)
-{
-    int fd_write;
-    open_fifo(&fd_write, orchestrator_fifo, O_WRONLY);
+void request_status(int pid) {
+    char buffer[1024];
+
+    int fd = open(ORCHESTRATOR, O_WRONLY);
+    if (fd == -1) {
+        perror("Open Error");
+        exit(EXIT_FAILURE);
+    }
 
     // Construindo a mensagem para solicitar o status
     Msg msg;
     strcpy(msg.program_and_args, "status");
+    msg.pid = getpid();
 
     // Enviando a mensagem para o servidor
-    ssize_t written_bytes = write(fd_write, &msg, sizeof(Msg));
-    if (written_bytes != sizeof(Msg))
-    {
+    ssize_t written_bytes = write(fd, &msg, sizeof(Msg));
+    if (written_bytes != sizeof(Msg)) {
         perror("Write Error");
-        close(fd_write);
+        close(fd);
         exit(EXIT_FAILURE);
     }
 
-    close(fd_write);
+    close(fd);
+
+    // Abra o FIFO para receber a resposta do servidor
+    snprintf(buffer, 1024, "tmp/FIFO_%d", getpid());
+    int fd_ret = open(buffer, O_RDONLY);
+    if (fd_ret == -1) {
+        perror("Open Error");
+        exit(EXIT_FAILURE);
+    }
+    // Ciclo para receber e imprimir mensagens do servidor
+    char received_msg[1024];
+    ssize_t read_bytes;
+    while ((read_bytes = read(fd_ret, received_msg, sizeof(received_msg))) > 0)
+    {
+        // Adicionando o terminador de string
+        received_msg[read_bytes] = '\0';
+        write(STDOUT_FILENO, received_msg, read_bytes);
+    }
+
+    if (read_bytes == -1)
+    {
+        perror("Read Error");
+        close(fd_ret);
+        exit(EXIT_FAILURE);
+    }
+
+    close(fd_ret);
+    unlink(buffer);
 }
 
-void process_status_request(PROCESS_REQUESTS *pr, const char *output_folder)
+void process_status_request(PROCESS_REQUESTS *pr, const char *output_folder, int fd_ret)
 {
-    printf("Status of tasks:\n");
+    // Verificar se pr é NULL
+    if (!pr)
+    {
+        write(fd_ret, "No tasks to display\n", strlen("No tasks to display\n"));
+        return;
+    }
 
-    printf("\nTasks in execution:\n");
+    // Escrever o cabeçalho
+    write(fd_ret, "Status of tasks:\n", strlen("Status of tasks:\n"));
+
+    // Escrever as tarefas em execução
+    write(fd_ret, "\nTasks in execution:\n", strlen("\nTasks in execution:\n"));
     for (int i = 0; i < pr->count; i++)
     {
         Msg *task = &pr->requests[i];
-        if (task->status == RUNNING)
+        if (task && task->status == RUNNING)
         {
-            printf("Task %d: RUNNING\n", task->id);
+            char buffer[50];
+            sprintf(buffer, "Task %d: RUNNING\n", task->id);
+            write(fd_ret, buffer, strlen(buffer));
         }
     }
 
-    printf("\nScheduled tasks:\n");
+    // Escrever as tarefas agendadas
+    write(fd_ret, "\nScheduled tasks:\n", strlen("\nScheduled tasks:\n"));
     for (int i = 0; i < pr->count; i++)
     {
         Msg *task = &pr->requests[i];
-        if (task->status == NEW)
+        if (task && task->status == NEW)
         {
-            printf("Task %d: NEW\n", task->id);
+            char buffer[50];
+            sprintf(buffer, "Task %d: NEW\n", task->id);
+            write(fd_ret, buffer, strlen(buffer));
         }
     }
 
-    printf("\nCompleted tasks:\n");
+    // Escrever as tarefas concluídas
+    write(fd_ret, "\nCompleted tasks:\n", strlen("\nCompleted tasks:\n"));
     for (int i = 0; i < pr->count; i++)
     {
         Msg *task = &pr->requests[i];
-        if (task->status == DONE)
+        if (task && task->status == DONE)
         {
-            printf("Task %d: DONE in %d ms\n", task->id, task->execution_time);
+            char buffer[100];
+            sprintf(buffer, "Task %d: DONE in %.2f ms\n", task->id, task->execution_time);
+            write(fd_ret, buffer, strlen(buffer));
         }
     }
 }
 
 
 
-void change_process_status(PROCESS_REQUESTS *pr, int id, TaskStatus new_status) {
-    for (int i = 0; i < pr->count; i++) {
-        if (pr->requests[i].id == id) {
+void change_process_status(PROCESS_REQUESTS *pr, int id, TaskStatus new_status, double time)
+{
+    for (int i = 0; i < pr->count; i++)
+    {
+        if (pr->requests[i].id == id)
+        {
             pr->requests[i].status = new_status;
+            pr->requests[i].execution_time = time;
             return; // Uma vez que encontramos o processo com o ID especificado, podemos sair da função
         }
     }
     // Se chegarmos aqui, significa que o ID especificado não foi encontrado
     fprintf(stderr, "Process with ID %d not found\n", id);
 }
-
 
 int exec_command(char *arg)
 {
