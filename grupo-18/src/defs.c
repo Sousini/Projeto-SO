@@ -25,14 +25,6 @@ void open_fifo(int *fd, const char *fifo_name, int flags)
     }
 }
 
-void send_client_response(int pid, int id)
-{
-    char response[100];
-    sprintf(response, "Response to client with ID %d: Program ID is %d\n", pid, id);
-    // Escrevendo para STDOUT_FILENO
-    write(STDOUT_FILENO, response, strlen(response));
-}
-
 PROCESS_REQUESTS *init_process_requests()
 {
     PROCESS_REQUESTS *pr = malloc(sizeof(PROCESS_REQUESTS));
@@ -60,60 +52,6 @@ bool add_request(PROCESS_REQUESTS *pr, Msg msg)
 
     pr->requests[pr->count++] = msg;
     return true;
-}
-
-Msg *get_request(PROCESS_REQUESTS *pr, int index)
-{
-    if (index < 0 || index >= pr->count)
-    {
-        char errorMsg[] = "Error: Invalid request index\n";
-        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
-        return NULL;
-    }
-
-    return &pr->requests[index];
-}
-
-void remove_request(PROCESS_REQUESTS *pr, int index)
-{
-    if (index < 0 || index >= pr->count)
-    {
-        char errorMsg[] = "Error: Invalid request index\n";
-        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
-        return;
-    }
-
-    for (int i = index; i < pr->count - 1; i++)
-    {
-        pr->requests[i] = pr->requests[i + 1];
-    }
-    pr->count--;
-}
-
-void handle_request(PROCESS_REQUESTS *pr, Msg *msg)
-{
-    // Verificar se o ponteiro pr é válido
-    if (!pr)
-    {
-        char errorMsg[] = "Error: PROCESS_REQUESTS is not initialized\n";
-        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
-        return;
-    }
-
-    // Adicionar a solicitação à estrutura de solicitações
-    if (!add_request(pr, *msg))
-    {
-        char errorMsg[] = "Error: Failed to add request to the PROCESS_REQUESTS\n";
-        write(STDERR_FILENO, errorMsg, strlen(errorMsg));
-        return;
-    }
-
-    // Implemente aqui a lógica para processar a solicitação
-    char receivedMsg[100];
-    sprintf(receivedMsg, "Received request with ID %d\n", msg->id);
-    write(STDOUT_FILENO, receivedMsg, strlen(receivedMsg));
-    char addedMsg[] = "Added to PROCESS_REQUESTS\n";
-    write(STDOUT_FILENO, addedMsg, strlen(addedMsg));
 }
 
 void execute_task(Msg *msg, const char *output_folder)
@@ -193,44 +131,13 @@ void execute_task(Msg *msg, const char *output_folder)
     write(STDOUT_FILENO, taskExecutedMsg, strlen(taskExecutedMsg));
 }
 
-void schedule_tasks(PROCESS_REQUESTS *pr, const char *output_folder, int parallel_tasks)
+void request_status(int pid)
 {
-    int tasks_to_execute = pr->count < parallel_tasks ? pr->count : parallel_tasks;
-
-    for (int i = 0; i < tasks_to_execute; i++)
-    {
-        Msg *task = get_request(pr, i);
-        if (task != NULL && task->occurrences == 0)
-        {
-            // Execute a tarefa em um processo separado
-            pid_t pid = fork();
-            if (pid == -1)
-            {
-                perror("fork");
-                exit(EXIT_FAILURE);
-            }
-
-            if (pid == 0)
-            {
-                // Execute a tarefa no processo filho
-                execute_task(task, output_folder);
-                exit(EXIT_SUCCESS);
-            }
-            else
-            {
-                // Aguarde a conclusão do processo filho
-                wait(NULL);
-                task->occurrences++;
-            }
-        }
-    }
-}
-
-void request_status(int pid) {
     char buffer[1024];
 
     int fd = open(ORCHESTRATOR, O_WRONLY);
-    if (fd == -1) {
+    if (fd == -1)
+    {
         perror("Open Error");
         exit(EXIT_FAILURE);
     }
@@ -242,7 +149,8 @@ void request_status(int pid) {
 
     // Enviando a mensagem para o servidor
     ssize_t written_bytes = write(fd, &msg, sizeof(Msg));
-    if (written_bytes != sizeof(Msg)) {
+    if (written_bytes != sizeof(Msg))
+    {
         perror("Write Error");
         close(fd);
         exit(EXIT_FAILURE);
@@ -253,7 +161,8 @@ void request_status(int pid) {
     // Abra o FIFO para receber a resposta do servidor
     snprintf(buffer, 1024, "tmp/FIFO_%d", getpid());
     int fd_ret = open(buffer, O_RDONLY);
-    if (fd_ret == -1) {
+    if (fd_ret == -1)
+    {
         perror("Open Error");
         exit(EXIT_FAILURE);
     }
@@ -329,8 +238,6 @@ void process_status_request(PROCESS_REQUESTS *pr, const char *output_folder, int
         }
     }
 }
-
-
 
 void change_process_status(PROCESS_REQUESTS *pr, int id, TaskStatus new_status, double time)
 {

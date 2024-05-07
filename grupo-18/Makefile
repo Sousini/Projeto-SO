@@ -23,3 +23,5 @@ obj/%.o: src/%.c
 
 clean:
 	rm -f obj/* tmp/* bin/* task_log.txt
+
+	

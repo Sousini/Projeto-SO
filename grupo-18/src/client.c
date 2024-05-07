@@ -28,7 +28,8 @@ int main(int argc, char *argv[])
         print_usage(argv);
     }
 
-    if (strcmp(argv[1], "status") == 0) {
+    if (strcmp(argv[1], "status") == 0)
+    {
         // Solicitar status ao servidor
         char buffer[1024];
         snprintf(buffer, 1024, "tmp/FIFO_%d", getpid());
@@ -52,14 +53,19 @@ int main(int argc, char *argv[])
         msg.status = NEW;
         msg.pid = getpid();
 
-        
-
         if (strcmp(execution_type, "execute") != 0)
         {
             print_invalid("Invalid command\n");
         }
 
-        if (strcmp(argv[3], "-u") == 0 || strcmp(argv[3], "-p") == 0)
+        if (strcmp(argv[3], "-p") == 0 || strcmp(argv[3], "-p") == 0)
+        {
+            if (argc < 5)
+            {
+                print_invalid("Functionality not implemented\n");
+            }
+        }
+        else if (strcmp(argv[3], "-u") == 0)
         {
             if (argc < 5)
             {

@@ -26,11 +26,10 @@ int main(int argc, char *argv[])
 
     unlink(ORCHESTRATOR);
     make_fifo(ORCHESTRATOR);
-    
+
     int fd_read, fd_write;
     open_fifo(&fd_read, ORCHESTRATOR, O_RDWR);
     open_fifo(&fd_write, ORCHESTRATOR, O_WRONLY);
-    write(STDOUT_FILENO, "Infelizmente, o programa funciona apenas no modelo First Come, First Served (FCFS).\n", strlen("Infelizmente, o programa funciona apenas no modelo First Come, First Served (FCFS).\n"));
     while (1)
     {
         Msg msg;
@@ -44,7 +43,8 @@ int main(int argc, char *argv[])
                 char buffer[1024];
                 snprintf(buffer, 1024, "tmp/FIFO_%d", msg.pid);
                 int fd_ret = open(buffer, O_WRONLY);
-                if (fd_ret == -1) {
+                if (fd_ret == -1)
+                {
                     perror("Open Error");
                     exit(EXIT_FAILURE);
                 }
@@ -63,11 +63,12 @@ int main(int argc, char *argv[])
                 msg.status = RUNNING;
                 add_request(pr, msg);
             }
-            else if (msg.status == WAIT) {
+            else if (msg.status == WAIT)
+            {
                 wait(NULL);
                 change_process_status(pr, msg.id, DONE, msg.execution_time);
 
-                 // Abrir ou criar o arquivo de log para registro
+                // Abrir ou criar o arquivo de log para registro
                 int log_fd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND, 0666);
                 if (log_fd == -1)
                 {
